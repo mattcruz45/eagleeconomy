@@ -5,9 +5,10 @@ const findBestExchange = require('./compareOrders'); // Import the updated logic
 const app = express();
 const port = 3000;
 
+// Initialize the SQLite database
 const db = new sqlite3.Database('./database.db', (err) => {
   if (err) {
-    console.error(err.message);
+    console.error('Database connection error:', err.message);
   } else {
     console.log('Connected to the SQLite database.');
   }
@@ -19,17 +20,14 @@ app.use(express.static('public')); // Serve static files
 
 // Endpoint to get the 10 most recent orders
 app.get('/recent-orders', (req, res) => {
-  db.all(
-    `SELECT * FROM exchange_orders ORDER BY timestamp DESC LIMIT 10`,
-    (err, rows) => {
-      if (err) {
-        console.error(err.message);
-        res.status(500).send({ error: 'Failed to retrieve recent orders.' });
-      } else {
-        res.status(200).send(rows);
-      }
+  db.all(`SELECT * FROM exchange_orders ORDER BY timestamp DESC LIMIT 10`, (err, rows) => {
+    if (err) {
+      console.error('Error retrieving recent orders:', err.message);
+      res.status(500).send({ error: 'Failed to retrieve recent orders.' });
+    } else {
+      res.status(200).send(rows);
     }
-  );
+  });
 });
 
 // Endpoint to handle form submissions
@@ -37,7 +35,8 @@ app.post('/submit-order', (req, res) => {
   const { orderType, usd, ebucks, location } = req.body;
 
   // Validate input
-  if (!orderType || !location || isNaN(usd) || isNaN(ebucks) || ebucks === 0) {
+  if (!orderType || !location || isNaN(usd) || isNaN(ebucks) || ebucks <= 0) {
+    console.error('Invalid input:', { orderType, usd, ebucks, location });
     res.status(400).send({ error: 'Invalid input' });
     return;
   }
@@ -52,7 +51,7 @@ app.post('/submit-order', (req, res) => {
     [orderType, exchangeRate, ebucks, location, timestamp],
     function (err) {
       if (err) {
-        console.error(err.message);
+        console.error('Database Insert Error:', err.message); // Log detailed error
         res.status(500).send({ error: 'Failed to insert order into database.' });
       } else {
         const newOrderId = this.lastID;
@@ -60,7 +59,7 @@ app.post('/submit-order', (req, res) => {
         // Fetch the newly inserted order
         db.get(`SELECT * FROM exchange_orders WHERE id = ?`, [newOrderId], (err, newOrder) => {
           if (err) {
-            console.error(err.message);
+            console.error('Failed to retrieve new order:', err.message);
             res.status(500).send({ error: 'Failed to retrieve new order.' });
             return;
           }
@@ -74,7 +73,7 @@ app.post('/submit-order', (req, res) => {
             [newOrderId, thirtyMinutesAgo],
             (err, existingOrders) => {
               if (err) {
-                console.error(err.message);
+                console.error('Failed to retrieve other orders:', err.message);
                 res.status(500).send({ error: 'Failed to retrieve other orders.' });
                 return;
               }
